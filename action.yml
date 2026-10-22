@@ -1,5 +1,5 @@
 name: CronEngine Heartbeat
-description: Ping a CronEngine heartbeat when a workflow starts, succeeds or fails, and get an alert when a scheduled workflow stops running.
+description: Ping a CronEngine heartbeat when a workflow starts, succeeds or fails, and get alerted when a scheduled run goes missing.
 author: CronEngine
 
 branding:

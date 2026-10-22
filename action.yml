@@ -1,0 +1,77 @@
+name: CronEngine Heartbeat
+description: Ping a CronEngine heartbeat when a workflow starts, succeeds or fails, and get an alert when a scheduled workflow stops running.
+author: CronEngine
+
+branding:
+  icon: activity
+  color: orange
+
+inputs:
+  ping-url:
+    description: The heartbeat's ping URL from CronEngine. Store it as a secret, for example secrets.CRONENGINE_PING.
+    required: true
+  status:
+    description: "What to report: start, success or fail. The job status (success, failure or cancelled) works too."
+    required: false
+    default: success
+  timeout:
+    description: Seconds to wait for CronEngine before giving up on one attempt.
+    required: false
+    default: "10"
+  retries:
+    description: How many times to retry a ping that failed because of the network.
+    required: false
+    default: "3"
+  fail-on-error:
+    description: Fail the workflow step when the ping cannot be sent. Off by default, so monitoring never breaks your build.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Ping CronEngine
+      shell: bash
+      # Inputs travel as environment variables, never pasted into the script,
+      # so nothing in them can be run as a command.
+      env:
+        PING_URL: ${{ inputs.ping-url }}
+        STATUS: ${{ inputs.status }}
+        TIMEOUT: ${{ inputs.timeout }}
+        RETRIES: ${{ inputs.retries }}
+        FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
+      run: |
+        set -u
+
+        complain() {
+          if [ "$FAIL_ON_ERROR" = "true" ]; then
+            echo "::error::$1"
+            exit 1
+          fi
+          echo "::warning::$1 The workflow carries on."
+          exit 0
+        }
+
+        if [ -z "$PING_URL" ]; then
+          complain "ping-url is empty, so no heartbeat was sent. Is the secret set for this repository?"
+        fi
+
+        # The URL carries the heartbeat's token: keep it out of the logs.
+        echo "::add-mask::$PING_URL"
+
+        url="${PING_URL%/}"
+        case "$STATUS" in
+          start)                   url="$url/start" ;;
+          success|"")              ;;
+          fail|failure|cancelled)  url="$url/fail" ;;
+          *) complain "Unknown status '$STATUS'. Use start, success or fail." ;;
+        esac
+
+        case "$TIMEOUT" in ''|*[!0-9]*) TIMEOUT=10 ;; esac
+        case "$RETRIES" in ''|*[!0-9]*) RETRIES=3 ;; esac
+
+        if curl -fsS -m "$TIMEOUT" --retry "$RETRIES" -o /dev/null "$url"; then
+          echo "Sent '${STATUS:-success}' to the CronEngine heartbeat."
+        else
+          complain "Could not reach the CronEngine heartbeat."
+        fi

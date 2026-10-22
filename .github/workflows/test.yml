@@ -1,0 +1,47 @@
+name: Test
+
+# Checks the action itself on every push: it must run on all three runner
+# systems and must never fail a workflow by default, even with a bad URL.
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: An empty URL only warns
+        uses: ./
+        with:
+          ping-url: ''
+
+      - name: An unreachable URL only warns
+        uses: ./
+        with:
+          ping-url: https://example.invalid/ping/hb_00000000000000000000000000000000
+          status: start
+          timeout: '5'
+          retries: '0'
+
+      - name: An unreachable URL fails when asked to
+        id: strict
+        continue-on-error: true
+        uses: ./
+        with:
+          ping-url: https://example.invalid/ping/hb_00000000000000000000000000000000
+          timeout: '5'
+          retries: '0'
+          fail-on-error: 'true'
+
+      - name: Check that the strict run failed
+        shell: bash
+        run: |
+          if [ "${{ steps.strict.outcome }}" != "failure" ]; then
+            echo "fail-on-error: true should have failed the step"
+            exit 1
+          fi
